@@ -2859,43 +2859,6 @@
     }
   }
 
-  async function adoptLiveTabIntoWorkspace(win, mainWin, workspaceId) {
-    const sourceTab = win.gBrowser?.selectedTab;
-    if (
-      !sourceTab ||
-      !mainWin?.gBrowser ||
-      typeof mainWin.gBrowser.adoptTab !== "function"
-    ) {
-      return null;
-    }
-
-    try {
-      sourceTab.removeAttribute("zen-empty-tab");
-      const adoptedTab = mainWin.gBrowser.adoptTab(sourceTab, {
-        tabIndex: Infinity,
-      });
-      if (!adoptedTab) {
-        return null;
-      }
-
-      await placeTabInWorkspace(mainWin, adoptedTab, workspaceId);
-      mainWin.focus();
-      win.setTimeout(() => {
-        if (!win.closed) {
-          win.close();
-        }
-      }, 150);
-      log("transferTabToWorkspace: adoptTab succeeded", {
-        sourceTabId: sourceTab.id ?? null,
-        adoptedTabId: adoptedTab.id ?? null,
-      });
-      return adoptedTab;
-    } catch (error) {
-      log("transferTabToWorkspace: adoptTab failed", error);
-      return null;
-    }
-  }
-
   async function transferTabToWorkspace(win, workspaceId) {
     const mainWin = getMainBrowserWindow(win);
     if (!mainWin) {
@@ -2912,55 +2875,25 @@
     const url = getLittleWindowUrl(win);
     log("Transferring tab to workspace", { url, workspace: workspace.name });
 
-    // Fallback: open URL in a new tab in the target workspace (causes reload)
-    const doFallback = async () => {
-      if (!url) {
-        mainWin.focus();
-        win.close();
-        return;
-      }
-      try {
-        const addTabOptions = {
-          triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-          skipAnimation: true,
-          skipRoute: true,
-        };
-        const fallbackContainerId = getWorkspaceContainerId(workspace);
-        if (fallbackContainerId) {
-          addTabOptions.userContextId = fallbackContainerId;
-        }
-        const newTab = mainWin.gBrowser.addTab(url, addTabOptions);
-        if (newTab) {
-          await placeTabInWorkspace(mainWin, newTab, workspaceId);
-        }
-        mainWin.focus();
-      } catch (e) {
-        log("transferTabToWorkspace fallback error", e);
-      }
-      win.close();
-    };
-
-    const ourBrowser = win.gBrowser?.selectedBrowser;
-
-    // If there's no live content to transfer, just switch workspace and close
-    if (!ourBrowser || !url) {
-      try {
-        await mainWin.gZenWorkspaces?.changeWorkspace?.(workspace);
-      } catch (e) {}
-      mainWin.focus();
-      win.close();
-      return;
-    }
-
     try {
-      const adoptedTab = await adoptLiveTabIntoWorkspace(win, mainWin, workspaceId);
-      if (!adoptedTab) {
-        await doFallback();
+      if (typeof mainWin.gZenWorkspaces?.changeWorkspaceWithID === "function") {
+        await mainWin.gZenWorkspaces.changeWorkspaceWithID(workspaceId);
+      } else {
+        await mainWin.gZenWorkspaces?.changeWorkspace?.(workspace);
       }
-
-    } catch (err) {
-      log("transferTabToWorkspace: live transfer failed, falling back", err);
-      await doFallback();
+      if (url) {
+        const newTab = mainWin.gBrowser.addTab(url, {
+          triggeringPrincipal:
+            Services.scriptSecurityManager.getSystemPrincipal(),
+          skipRoute: true,
+        });
+        mainWin.gBrowser.selectedTab = newTab;
+      }
+      mainWin.focus();
+    } catch (error) {
+      log("transferTabToWorkspace failed", error);
+    } finally {
+      win.close();
     }
   }
 
