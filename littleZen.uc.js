@@ -191,6 +191,34 @@
     };
   }
 
+  function isExternalStartupWindow(win) {
+    try {
+      const extraOptions = win.arguments?.[1];
+      return (
+        extraOptions instanceof Ci.nsIPropertyBag2 &&
+        extraOptions.hasKey("fromExternal") &&
+        extraOptions.getPropertyAsBool("fromExternal")
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function getExternalStartupUrl(win) {
+    const argument = win.arguments?.[0];
+    if (typeof argument === "string") {
+      return argument;
+    }
+    if (argument?.spec) {
+      return argument.spec;
+    }
+    try {
+      return argument?.queryElementAt?.(0, Ci.nsIURI)?.spec ?? null;
+    } catch (error) {
+      return null;
+    }
+  }
+
   function logLittleWindowState(win, label, extra = undefined) {
     log(label, {
       ...getLittleWindowState(win),
@@ -3764,6 +3792,27 @@
       return;
     }
 
+    const redirectExternalStartup =
+      !isLittleWindow(win) &&
+      isExternalStartupWindow(win) &&
+      [...browserWindows()].some(
+        browserWindow => browserWindow !== win && !isLittleWindow(browserWindow)
+      );
+    if (redirectExternalStartup) {
+      patchOpenBrowserWindow(win);
+      const url = getExternalStartupUrl(win);
+      if (url) {
+        LittleZen.openLittleWindow(win, {
+          url,
+          source: "external-startup-window",
+          expanded: true,
+        });
+        win.close();
+        return;
+      }
+      log("External startup URL not available yet; waiting for browser startup");
+    }
+
     win[PATCH_FLAGS.window] = true;
     win.LittleZen = LittleZen;
 
@@ -3830,6 +3879,34 @@
 
     whenStartupReady(win, () => {
       log("Little Zen delayed startup reached");
+      if (redirectExternalStartup) {
+        let attempts = 0;
+        const redirect = () => {
+          if (win.closed) {
+            return;
+          }
+
+          const url = getLittleWindowUrl(win);
+          if (!url) {
+            if (++attempts < 100) {
+              win.setTimeout(redirect, 50);
+            } else {
+              log("External startup URL did not become available; keeping normal window");
+            }
+            return;
+          }
+
+          LittleZen.openLittleWindow(win, {
+            url,
+            source: "external-startup-window",
+            expanded: true,
+          });
+          win.close();
+        };
+        redirect();
+        return;
+      }
+
       patchBrowserDOMWindow(win);
       ensureCommand(win);
       patchOpenBrowserWindow(win);
