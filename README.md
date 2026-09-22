@@ -1,8 +1,10 @@
 # Little Zen without Sine
 
-A Windows-focused Little Zen backport for Zen Browser. It runs through `userChromeJS` and does not require Sine.
+A Little Zen backport for Zen Browser on Windows, Linux, and macOS. It uses `userChromeJS` and does not require Sine.
 
 This project is based on [12th-devs/little-zen](https://github.com/12th-devs/little-zen) and includes the behavior and UI changes developed for this setup.
+
+![Little Zen showcase](assets/little-zen-showcase.gif)
 
 ## Features
 
@@ -19,37 +21,82 @@ This project is based on [12th-devs/little-zen](https://github.com/12th-devs/lit
 - Adapt the Little Zen frame and toolbar colors to the loaded page.
 - Skip this backport automatically when native Little Zen support is available.
 
-## Requirements
-
-- Zen Browser on Windows.
-- A working [`fx-autoconfig`](https://github.com/MrOtherGuy/fx-autoconfig) `userChromeJS` loader.
-- `toolkit.legacyUserProfileCustomizations.stylesheets` set to `true` in `about:config`.
-
-This version was developed and tested with the `fx-autoconfig` layout that loads scripts from `chrome/JS` and styles from `chrome/CSS`.
-
 ## Install
 
-1. Open `about:support` in Zen.
-2. Find **Profile Folder**, then select **Open Folder**.
-3. Close Zen.
-4. Copy `littleZen.uc.js` to:
+Close Zen, then run one command. The installer includes the required [`fx-autoconfig`](https://github.com/MrOtherGuy/fx-autoconfig) runtime.
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/wahyuabrory/little-zen/main/install.ps1 | iex"
+```
+
+If Zen is installed in a protected directory, open PowerShell as Administrator and run the same command. To select paths explicitly:
+
+```powershell
+.\install.ps1 -ProfilePath "$env:APPDATA\zen\Profiles\your-profile" -ZenPath "C:\Program Files\Zen Browser"
+```
+
+### Linux
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wahyuabrory/little-zen/main/install.sh | sh
+```
+
+The installer supports the Zen tarball and normal system packages. A system installation can require `sudo`; the installer prints the exact rerun command if needed.
+
+Zen Flatpak is not supported. Flatpak application files are immutable, but `fx-autoconfig` must add two files beside the browser binary. Use the official tarball instead.
+
+### macOS
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wahyuabrory/little-zen/main/install.sh | sh
+```
+
+Writing to `/Applications/Zen.app` can require `sudo`. If required, use the exact rerun command printed by the installer.
+
+### Local or explicit paths
+
+Clone the repository when you need to select paths manually:
+
+```sh
+git clone https://github.com/wahyuabrory/little-zen.git
+cd little-zen
+```
+
+```sh
+./install.sh --profile "/path/to/zen/profile" --zen "/path/to/Zen.app"
+```
+
+On Linux, `--zen` is the directory containing the `zen` binary. On macOS, it is the `.app` bundle.
+
+The scripts do not delete existing Zen or profile files. They stop if another autoconfig installation would be overwritten. Repeated runs update Little Zen without adding duplicate preferences or CSS imports.
+
+## Manual install
+
+Use this only when `fx-autoconfig` is already installed:
+
+1. Open `about:support` in Zen and open the **Profile Folder**.
+2. Close Zen.
+3. Copy `littleZen.uc.js` to:
 
    ```text
    <profile>/chrome/JS/littleZen.uc.js
    ```
 
-5. Copy `little-zen.css` to:
+4. Copy `little-zen.css` to:
 
    ```text
    <profile>/chrome/CSS/little-zen.css
    ```
 
-6. Add this line at the top of `<profile>/chrome/userChrome.css`:
+5. Add this line at the top of `<profile>/chrome/userChrome.css`:
 
    ```css
    @import url("CSS/little-zen.css");
    ```
 
+6. Set `toolkit.legacyUserProfileCustomizations.stylesheets` to `true` in `about:config`.
 7. Start Zen.
 
 No Sine files or `sine-mods` configuration are required.
