@@ -3212,18 +3212,13 @@
     win.setTimeout(refreshRouteTarget, 150);
     win.setTimeout(refreshRouteTarget, 750);
 
-    // Insert into .customizableui-special-spring2 (right-side nav-bar spring)
-    const spring2 = doc.querySelector(".customizableui-special-spring2");
-    if (spring2) {
-      spring2.appendChild(picker);
-      log("Injected space picker into .customizableui-special-spring2");
-    } else {
-      // Fallback: right end of nav-bar
-      const navBar = doc.getElementById("nav-bar") || doc.getElementById("urlbar-container");
-      if (navBar) {
-        navBar.appendChild(picker);
-        log("Injected space picker into nav-bar (fallback)");
-      }
+    const target =
+      doc.getElementById("nav-bar-customization-target") ||
+      doc.getElementById("nav-bar") ||
+      doc.getElementById("urlbar-container");
+    if (target) {
+      target.appendChild(picker);
+      log("Injected space picker into nav-bar target");
     }
 
     // Popup stays inside picker — moving it to popupSet breaks single-click command events
