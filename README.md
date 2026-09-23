@@ -17,8 +17,10 @@ This project is based on [12th-devs/little-zen](https://github.com/12th-devs/lit
 - Press `Ctrl+O` in Little Zen to move the page to the most recent Space.
 - Press `Ctrl+Alt+O` to select a different Space.
 - Use the **Open in Space** toolbar control with searchable Space selection.
+- Ignore Zen Space routing and keep container-extension redirects in the Little Zen window.
 - Preserve the live tab when moving it back into the main Zen window when possible.
 - Adapt the Little Zen frame and toolbar colors to the loaded page.
+- Keep pinned extension buttons in the sidebar URL bar until it is full.
 - Skip this backport automatically when native Little Zen support is available.
 
 ## Install
