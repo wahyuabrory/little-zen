@@ -1191,8 +1191,8 @@
         }
       }
     }
-
   }
+
   function applyExpandedLittleWindow(win, reason) {
     if (!isBrowserWindow(win) || win.closed || win.__littleZenExpandedApplied) {
       return;
@@ -2899,13 +2899,16 @@
     win.setTimeout(refreshRouteTarget, 150);
     win.setTimeout(refreshRouteTarget, 750);
 
-    const target =
-      doc.getElementById("nav-bar-customization-target") ||
-      doc.getElementById("nav-bar") ||
-      doc.getElementById("urlbar-container");
-    if (target) {
-      target.appendChild(picker);
-      log("Injected space picker into nav-bar target");
+    const spring2 = doc.querySelector(".customizableui-special-spring2");
+    if (spring2) {
+      spring2.appendChild(picker);
+      log("Injected space picker into right-side nav-bar spring");
+    } else {
+      const navBar = doc.getElementById("nav-bar") || doc.getElementById("urlbar-container");
+      if (navBar) {
+        navBar.appendChild(picker);
+        log("Injected space picker into nav-bar fallback");
+      }
     }
 
     // Popup stays inside picker — moving it to popupSet breaks single-click command events
@@ -2974,6 +2977,7 @@
     }
 
     const urlbar = win.gURLBar;
+    let resizeObserver = null;
 
     if (win.__littleZenStartExpanded) {
       markLittleWindowEarly(win, { expanded: true });
@@ -3009,6 +3013,10 @@
       }
 
       delete win.__littleZenLifecycleCleanup;
+      try {
+        resizeObserver?.disconnect();
+      } catch (error) {}
+      resizeObserver = null;
       clearLittleWindowLoadingFallback(win);
       try {
         win.removeEventListener("ZenFloatingURLBarOpened", onOpened);
@@ -3037,6 +3045,39 @@
         event.detail?.onElementPicked ? "urlbar-picked" : "urlbar-closed"
       );
     };
+
+    if (urlbar && typeof win.ResizeObserver === "function") {
+      resizeObserver = new win.ResizeObserver(entries => {
+        if (win.closed || !isEmptyLittleWindow(win)) {
+          return;
+        }
+
+        for (const entry of entries) {
+          if (entry.target !== urlbar) {
+            continue;
+          }
+
+          const { width, height } = entry.target.getBoundingClientRect();
+          if (!width || !height) {
+            continue;
+          }
+
+          try {
+            win.resizeTo(
+              Math.ceil(Math.max(width, URLBAR_WIDTH)),
+              Math.ceil(Math.max(height, 40))
+            );
+            logLittleWindowState(win, "Resized Little Zen window to urlbar bounds", {
+              width: Math.ceil(Math.max(width, URLBAR_WIDTH)),
+              height: Math.ceil(Math.max(height, 40)),
+            });
+          } catch (error) {
+            log("Could not resize the Little Zen window to match the urlbar.", error);
+          }
+        }
+      });
+      resizeObserver.observe(urlbar);
+    }
 
     markLittleWindowEarly(win, {
       url: win.__littleZenPendingURL,
