@@ -296,6 +296,8 @@
 }
 
 :root[zen-little-window="true"] #nav-bar {
+  min-height: 44px !important;
+  padding-block: 5px !important;
   padding-inline-end: var(--little-zen-titlebar-control-width) !important;
   box-shadow: var(--blended-addressbar-toolbar-separator-shadow);
   background-color: var(--zen-tab-header-background, transparent) !important;
@@ -308,6 +310,23 @@
   --toolbar-color: var(--zen-tab-header-foreground, currentColor);
   --toolbar-field-color: var(--zen-tab-header-foreground, currentColor);
   --input-color: var(--zen-tab-header-foreground, currentColor);
+}
+
+:root[zen-little-window="true"] #nav-bar-overflow-button {
+  display: none !important;
+}
+
+:root[zen-little-window="true"] #zen-appcontent-navbar-wrapper {
+  height: auto !important;
+  min-height: 44px !important;
+  overflow: visible !important;
+  transition: none !important;
+}
+
+:root[zen-little-window="true"] #zen-appcontent-navbar-container {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transition: none !important;
 }
 
 :root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) {
@@ -343,7 +362,13 @@
 
 :root[zen-little-window="true"] #urlbar:is([focused], [open], [breakout-extend="true"]) .urlbar-input-box,
 :root[zen-little-window="true"] #urlbar:is([focused], [open], [breakout-extend="true"]) #urlbar-input {
+  color: var(--toolbar-field-focus-color, FieldText) !important;
+  --input-color: var(--toolbar-field-focus-color, FieldText);
   text-align: start !important;
+}
+
+:root[zen-little-window="true"] #identity-box[pageproxystate="invalid"] {
+  display: none !important;
 }
 
 :root[zen-little-window="true"] #urlbar:not([focused]):not([open]):not([breakout-extend="true"]):hover > .urlbar-background,
@@ -512,13 +537,15 @@
   align-items: center;
   gap: 0;
   padding: 0;
-  border-radius: var(--toolbarbutton-border-radius, 4px);
+  border-radius: 16px;
   background: transparent !important;
   background-color: transparent !important;
   box-shadow: 0 0 0 1px var(--little-zen-theme-outline, color-mix(in srgb, currentColor 14%, transparent)) inset;
   cursor: pointer;
-  min-height: var(--urlbar-height, 28px);
-  max-height: var(--urlbar-height, 28px);
+  box-sizing: border-box !important;
+  height: 32px !important;
+  min-height: 32px;
+  max-height: 32px;
   max-width: 184px;
   margin-inline: 5px;
   transition: none !important;
@@ -532,8 +559,10 @@
 .zen-little-window-space-button,
 .zen-little-window-space-arrow {
   appearance: none !important;
-  min-height: var(--urlbar-height, 28px) !important;
-  max-height: var(--urlbar-height, 28px) !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
   margin: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
@@ -571,8 +600,8 @@
   max-width: 156px;
   min-width: 112px !important;
   padding: 1px 5px 1px 7px !important;
-  border-start-start-radius: var(--toolbarbutton-border-radius, 4px) !important;
-  border-end-start-radius: var(--toolbarbutton-border-radius, 4px) !important;
+  border-start-start-radius: 16px !important;
+  border-end-start-radius: 16px !important;
 }
 
 .zen-little-window-space-button:hover {
@@ -599,8 +628,8 @@
   min-width: 24px !important;
   max-width: 26px;
   border-inline-start: 1px solid var(--little-zen-theme-outline, color-mix(in srgb, currentColor 16%, transparent)) !important;
-  border-start-end-radius: var(--toolbarbutton-border-radius, 4px) !important;
-  border-end-end-radius: var(--toolbarbutton-border-radius, 4px) !important;
+  border-start-end-radius: 16px !important;
+  border-end-end-radius: 16px !important;
 }
 
 #zen-little-window-space-picker-arrow:hover {

@@ -36,6 +36,8 @@
     autoClose: "__littleZenAutoCloseAttached",
     doubleEscapeClose: "__littleZenDoubleEscapeCloseAttached",
     keyListener: "__littleZenKeyListenerAttached",
+    tabClickListener: "__littleZenTabClickListenerAttached",
+    contentLinkListener: "__littleZenContentLinkListenerAttached",
     window: "__littleZenBootstrapped",
   };
   const littleZenThemeCache = new Map();
@@ -49,6 +51,9 @@
   );
   const { BrowserWindowTracker } = ChromeUtils.importESModule(
     "resource:///modules/BrowserWindowTracker.sys.mjs"
+  );
+  const { ClickHandlerParent } = ChromeUtils.importESModule(
+    "resource:///actors/ClickHandlerParent.sys.mjs"
   );
   const { URILoadingHelper } = ChromeUtils.importESModule(
     "resource:///modules/URILoadingHelper.sys.mjs"
@@ -76,6 +81,9 @@
     if (arg instanceof Error) {
       return `${arg.name}: ${arg.message}`;
     }
+    if (typeof arg?.message === "string") {
+      return `${arg.name ?? "Error"}: ${arg.message}`;
+    }
     if (typeof arg?.spec === "string") {
       return arg.spec;
     }
@@ -95,6 +103,20 @@
     console.log("[LittleZen]", ...args);
     try {
       Services.console.logStringMessage(message);
+    } catch (error) {}
+    try {
+      const file = Services.dirsvc.get("ProfD", Ci.nsIFile);
+      file.append("little-zen-debug.log");
+      const stream = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
+        Ci.nsIFileOutputStream
+      );
+      stream.init(file, 0x1a, 0o600, 0);
+      const converter = Cc[
+        "@mozilla.org/intl/converter-output-stream;1"
+      ].createInstance(Ci.nsIConverterOutputStream);
+      converter.init(stream, "UTF-8");
+      converter.writeString(`${new Date().toISOString()} ${message}\n`);
+      converter.close();
     } catch (error) {}
   }
 
@@ -132,6 +154,10 @@
     return isLittleWindow(win) && !!win.gBrowser?.selectedTab?.hasAttribute("zen-empty-tab");
   }
 
+  function usesEmptyLittleWindowPresentation(win) {
+    return isEmptyLittleWindow(win) && !win.__littleZenStartExpanded;
+  }
+
   function isExternalOpenContext(context) {
     return (
       context === Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL ||
@@ -147,14 +173,50 @@
 
     return {
       littleWindow: isLittleWindow(win),
-      startupReady: !!win?.gBrowserInit?.delayedStartupFinished,
+      startupReady: !!win?.__littleZenStartupReady,
       pendingUrl: win?.__littleZenPendingURL ?? null,
       rootEmpty: !!root?.hasAttribute("zen-has-empty-tab"),
       tabEmpty: !!tab?.hasAttribute("zen-empty-tab"),
       urlbarBreakout: !!urlbar?.hasAttribute("breakout-extend"),
       urlbarOpen: !!urlbar?.view?.isOpen,
       urlbarNewtab: !!urlbar?.hasAttribute("zen-newtab"),
+      currentUrl: win?.gBrowser?.selectedBrowser?.currentURI?.spec ?? null,
+      compactMode: root?.getAttribute("zen-compact-mode") ?? null,
+      singleToolbar: !!root?.hasAttribute("zen-single-toolbar"),
+      navbarParent: win?.document?.getElementById("nav-bar")?.parentElement?.id ?? null,
+      backButtonParent:
+        win?.document?.getElementById("back-button")?.parentElement?.id ?? null,
+      urlbarParent:
+        win?.document?.getElementById("urlbar-container")?.parentElement?.id ?? null,
     };
+  }
+
+  function isExternalStartupWindow(win) {
+    try {
+      const extraOptions = win.arguments?.[1];
+      return (
+        extraOptions instanceof Ci.nsIPropertyBag2 &&
+        extraOptions.hasKey("fromExternal") &&
+        extraOptions.getPropertyAsBool("fromExternal")
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function getExternalStartupUrl(win) {
+    const argument = win.arguments?.[0];
+    if (typeof argument === "string") {
+      return argument;
+    }
+    if (argument?.spec) {
+      return argument.spec;
+    }
+    try {
+      return argument?.queryElementAt?.(0, Ci.nsIURI)?.spec ?? null;
+    } catch (error) {
+      return null;
+    }
   }
 
   function logLittleWindowState(win, label, extra = undefined) {
@@ -197,12 +259,6 @@
     }
 
     win.__littleZenPresentationReleased = true;
-    try {
-      win.windowUtils?.suppressAnimation?.(false);
-    } catch (error) {
-      log("Could not release the Little Zen startup presentation.", error);
-    }
-
     logLittleWindowState(win, "Released Little Zen startup presentation", {
       reason,
     });
@@ -453,17 +509,13 @@
       if (littleWindow) {
         littleWindow._zenStartupLittleWindow = true;
         littleWindow._zenStartupSyncFlag = "unsynced";
+        littleWindow.__littleZenStartExpanded = !!options.expanded;
         littleWindow.__littleZenStartLoadingVeil = !!options.url;
         littleWindow.__littleZenPresentationReleased = false;
         log("Opened Little Zen browser window", {
           startupSyncFlag: littleWindow._zenStartupSyncFlag,
           hasPendingUrl: !!littleWindow.__littleZenPendingURL,
         });
-        try {
-          littleWindow.windowUtils?.suppressAnimation?.(true);
-        } catch (error) {
-          log("Could not suppress the Little Zen startup animation.", error);
-        }
         try {
           littleWindow.document?.documentElement?.setAttribute(
             LITTLE_WINDOW_ATTR,
@@ -487,6 +539,10 @@
   }
 
   function patchCompactModeManager(win) {
+    if (!win.__littleZenStartupReady) {
+      return;
+    }
+
     const manager = win.gZenCompactModeManager;
     if (!manager || manager[PATCH_FLAGS.compactMode]) {
       return;
@@ -508,10 +564,19 @@
       },
     });
 
+    if (manager.preference) {
+      manager.preference = false;
+      log("Disabled inherited compact mode in Little Zen window");
+    }
+
     manager[PATCH_FLAGS.compactMode] = true;
   }
 
   function patchVerticalTabsManager(win) {
+    if (!win.__littleZenStartupReady) {
+      return;
+    }
+
     const manager = win.gZenVerticalTabsManager;
     if (!manager || manager[PATCH_FLAGS.verticalTabs]) {
       return;
@@ -534,6 +599,21 @@
         return originalGetter ? originalGetter.call(this) : originalValue;
       },
     });
+
+    if (typeof manager._updateEvent === "function") {
+      const originalUpdateEvent = manager._updateEvent;
+      manager._updateEvent = function (...args) {
+        const root = win.document.documentElement;
+        if (root.hasAttribute("zen-single-toolbar")) {
+          this._hasSetSingleToolbar = true;
+          this._navbarParent ||= this._toolbarOriginalParent;
+        }
+        const result = originalUpdateEvent.apply(this, args);
+        root.removeAttribute("zen-single-toolbar");
+        positionLittleWindowNavbar(win);
+        return result;
+      };
+    }
 
     manager[PATCH_FLAGS.verticalTabs] = true;
   }
@@ -612,7 +692,7 @@
         enumerable: behaviorDescriptor.enumerable,
         get() {
           if (this.document.documentElement.hasAttribute(LITTLE_WINDOW_ATTR)) {
-            return "float";
+            return "default";
           }
           return behaviorDescriptor.get.call(this);
         },
@@ -833,7 +913,13 @@
     }
 
     const root = win.document.documentElement;
-    const hasEmptyTab = !!win.gBrowser?.selectedTab?.hasAttribute("zen-empty-tab");
+    const tab = win.gBrowser?.selectedTab;
+
+    if (win.__littleZenStartExpanded && tab?.hasAttribute("zen-empty-tab")) {
+      tab.removeAttribute("zen-empty-tab");
+    }
+
+    const hasEmptyTab = usesEmptyLittleWindowPresentation(win);
 
     if (hasEmptyTab) {
       root.setAttribute("zen-has-empty-tab", "true");
@@ -900,7 +986,7 @@
 
       syncEmptyTabState(win, event?.type ?? "manual");
       scheduleThemeUpdate(event?.type ?? "manual");
-      if (win.__littleZenPendingURL && win.gBrowserInit?.delayedStartupFinished) {
+      if (win.__littleZenPendingURL && win.__littleZenStartupReady) {
         flushPendingNavigation(win, `state-tracker:${event?.type ?? "manual"}`);
       }
     };
@@ -1158,10 +1244,45 @@
     });
   }
 
+  function positionLittleWindowNavbar(win) {
+    const navBar = win.document.getElementById("nav-bar");
+    const navContainer = win.document.getElementById(
+      "zen-appcontent-navbar-container"
+    );
+    if (navBar && navContainer && navBar.parentElement !== navContainer) {
+      navContainer.appendChild(navBar);
+      log("Moved Little Zen navbar above page content");
+    }
+
+    const target = win.document.getElementById("nav-bar-customization-target");
+    const urlbar = win.document.getElementById("urlbar-container");
+    if (target && urlbar?.parentElement === target) {
+      for (const id of ["back-button", "forward-button", "stop-reload-button"]) {
+        const item = win.document.getElementById(id);
+        if (item) {
+          target.insertBefore(item, urlbar);
+        }
+      }
+    }
+  }
+
+  function applyExpandedLittleWindow(win, reason) {
+    if (!isBrowserWindow(win) || win.closed || win.__littleZenExpandedApplied) {
+      return;
+    }
+
+    win.__littleZenExpandedApplied = true;
+    win.__littleZenStartExpanded = true;
+    closeLittleWindowUrlbar(win, "expanded-startup");
+    leaveEmptyTabMode(win, reason);
+    expandLittleWindow(win, reason);
+  }
+
   function refreshLittleWindowLayout(win) {
     const root = win.document.documentElement;
     root.setAttribute(LITTLE_WINDOW_ATTR, "true");
-    root.toggleAttribute("zen-no-padding", isEmptyLittleWindow(win));
+    root.setAttribute("zen-compact-mode", "false");
+    root.toggleAttribute("zen-no-padding", usesEmptyLittleWindowPresentation(win));
 
     try {
       win.ZenThemeModifier?.updateElementSeparation?.();
@@ -1174,6 +1295,8 @@
     } catch (error) {
       log("Could not refresh vertical tabs layout.", error);
     }
+
+    positionLittleWindowNavbar(win);
   }
 
   function verifyLittleWindowUrlbarPosition(win, reason = "unknown") {
@@ -1222,7 +1345,7 @@
       return false;
     }
 
-    if (!win.gBrowserInit?.delayedStartupFinished) {
+    if (!win.__littleZenStartupReady) {
       logLittleWindowState(win, "Little Zen pending URL waiting for delayed startup", {
         reason,
         url: pendingUrl,
@@ -1298,12 +1421,6 @@
         if (routedTab?.linkedBrowser) {
           loadedByNewTab = true;
           syncLittleWindowTransparentBrowsers(win);
-          if (targetWorkspace?.uuid) {
-            routedTab.setAttribute("zen-workspace-id", targetWorkspace.uuid);
-          }
-          if (routingDecision?.hasZenDefaultUserContextId) {
-            routedTab.setAttribute("zenDefaultUserContextId", "true");
-          }
           win.gBrowser.selectedTab = routedTab;
           selectedBrowser = routedTab.linkedBrowser;
           win.setTimeout(() => {
@@ -1338,12 +1455,6 @@
         }
       } else if (selectedTab && targetWorkspace?.uuid) {
         syncLittleWindowTransparentBrowsers(win);
-        selectedTab.setAttribute("zen-workspace-id", targetWorkspace.uuid);
-        if (routingDecision?.hasZenDefaultUserContextId) {
-          selectedTab.setAttribute("zenDefaultUserContextId", "true");
-        } else {
-          selectedTab.removeAttribute("zenDefaultUserContextId");
-        }
       }
 
       const loadFlags =
@@ -1351,7 +1462,7 @@
         Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
 
       if (!loadedByNewTab) {
-        selectedBrowser.fixupAndLoadURIString(pendingUrl, {
+        selectedBrowser.browsingContext.loadURI(Services.io.newURI(pendingUrl), {
           triggeringPrincipal: principal,
           loadFlags,
         });
@@ -1418,8 +1529,14 @@
   }
 
   function focusUrlbar(win) {
-    closeLittleWindowUrlbar(win, "focus-urlbar-disabled");
-    logLittleWindowState(win, "Blocked Little Zen urlbar focus");
+    try {
+      win.focus();
+      win.gURLBar?.focus();
+      win.gURLBar?.select();
+      win.gURLBar?.inputField?.focus();
+    } catch (error) {
+      log("Could not focus the Little Zen urlbar.", error);
+    }
   }
 
   // ── Workspace Picker ────────────────────────────────────────────────────────
@@ -2742,43 +2859,6 @@
     }
   }
 
-  async function adoptLiveTabIntoWorkspace(win, mainWin, workspaceId) {
-    const sourceTab = win.gBrowser?.selectedTab;
-    if (
-      !sourceTab ||
-      !mainWin?.gBrowser ||
-      typeof mainWin.gBrowser.adoptTab !== "function"
-    ) {
-      return null;
-    }
-
-    try {
-      sourceTab.removeAttribute("zen-empty-tab");
-      const adoptedTab = mainWin.gBrowser.adoptTab(sourceTab, {
-        tabIndex: Infinity,
-      });
-      if (!adoptedTab) {
-        return null;
-      }
-
-      await placeTabInWorkspace(mainWin, adoptedTab, workspaceId);
-      mainWin.focus();
-      win.setTimeout(() => {
-        if (!win.closed) {
-          win.close();
-        }
-      }, 150);
-      log("transferTabToWorkspace: adoptTab succeeded", {
-        sourceTabId: sourceTab.id ?? null,
-        adoptedTabId: adoptedTab.id ?? null,
-      });
-      return adoptedTab;
-    } catch (error) {
-      log("transferTabToWorkspace: adoptTab failed", error);
-      return null;
-    }
-  }
-
   async function transferTabToWorkspace(win, workspaceId) {
     const mainWin = getMainBrowserWindow(win);
     if (!mainWin) {
@@ -2795,55 +2875,25 @@
     const url = getLittleWindowUrl(win);
     log("Transferring tab to workspace", { url, workspace: workspace.name });
 
-    // Fallback: open URL in a new tab in the target workspace (causes reload)
-    const doFallback = async () => {
-      if (!url) {
-        mainWin.focus();
-        win.close();
-        return;
-      }
-      try {
-        const addTabOptions = {
-          triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-          skipAnimation: true,
-          skipRoute: true,
-        };
-        const fallbackContainerId = getWorkspaceContainerId(workspace);
-        if (fallbackContainerId) {
-          addTabOptions.userContextId = fallbackContainerId;
-        }
-        const newTab = mainWin.gBrowser.addTab(url, addTabOptions);
-        if (newTab) {
-          await placeTabInWorkspace(mainWin, newTab, workspaceId);
-        }
-        mainWin.focus();
-      } catch (e) {
-        log("transferTabToWorkspace fallback error", e);
-      }
-      win.close();
-    };
-
-    const ourBrowser = win.gBrowser?.selectedBrowser;
-
-    // If there's no live content to transfer, just switch workspace and close
-    if (!ourBrowser || !url) {
-      try {
-        await mainWin.gZenWorkspaces?.changeWorkspace?.(workspace);
-      } catch (e) {}
-      mainWin.focus();
-      win.close();
-      return;
-    }
-
     try {
-      const adoptedTab = await adoptLiveTabIntoWorkspace(win, mainWin, workspaceId);
-      if (!adoptedTab) {
-        await doFallback();
+      if (typeof mainWin.gZenWorkspaces?.changeWorkspaceWithID === "function") {
+        await mainWin.gZenWorkspaces.changeWorkspaceWithID(workspaceId);
+      } else {
+        await mainWin.gZenWorkspaces?.changeWorkspace?.(workspace);
       }
-
-    } catch (err) {
-      log("transferTabToWorkspace: live transfer failed, falling back", err);
-      await doFallback();
+      if (url) {
+        const newTab = mainWin.gBrowser.addTab(url, {
+          triggeringPrincipal:
+            Services.scriptSecurityManager.getSystemPrincipal(),
+          skipRoute: true,
+        });
+        mainWin.gBrowser.selectedTab = newTab;
+      }
+      mainWin.focus();
+    } catch (error) {
+      log("transferTabToWorkspace failed", error);
+    } finally {
+      win.close();
     }
   }
 
@@ -3123,7 +3173,7 @@
       e.stopPropagation();
     });
 
-    // Ctrl/Cmd+O shortcut
+    // Ctrl/Cmd+O opens in the current target; Alt opens the Space picker.
     win.addEventListener("keydown", (e) => {
       if (
         !e.defaultPrevented &&
@@ -3133,7 +3183,11 @@
       ) {
         e.preventDefault();
         e.stopPropagation();
-        openSelectedWorkspace();
+        if (e.altKey) {
+          openMenu();
+        } else {
+          openSelectedWorkspace();
+        }
       }
     }, true);
 
@@ -3240,18 +3294,28 @@
     const urlbar = win.gURLBar;
     let resizeObserver = null;
 
+    if (win.__littleZenStartExpanded) {
+      win.document.documentElement.setAttribute(LITTLE_WINDOW_ATTR, "true");
+      applyExpandedLittleWindow(win, "expanded-startup");
+      win[PATCH_FLAGS.autoClose] = true;
+      logLittleWindowState(win, "Opened expanded Little Zen window");
+      return;
+    }
+
     const onOpened = () => {
       releaseLittleWindowPresentation(win, "floating-urlbar-opened");
       centerWindow(win);
-      closeLittleWindowUrlbar(win, "floating-urlbar-opened-disabled");
 
       try {
         win.focus();
+        urlbar?.focus();
+        urlbar?.select();
+        urlbar?.inputField?.focus();
       } catch (error) {
-        log("Could not focus the Little Zen window.", error);
+        log("Could not focus the Little Zen urlbar.", error);
       }
 
-      logLittleWindowState(win, "Blocked Little Zen floating urlbar open");
+      logLittleWindowState(win, "Opened Little Zen floating urlbar");
     };
 
     const onUnload = () => {
@@ -3314,9 +3378,12 @@
           }
 
           try {
-            win.resizeTo(Math.ceil(width), Math.ceil(Math.max(height, 40)));
+            win.resizeTo(
+              Math.ceil(Math.max(width, URLBAR_WIDTH)),
+              Math.ceil(Math.max(height, 40))
+            );
             logLittleWindowState(win, "Resized Little Zen window to urlbar bounds", {
-              width: Math.ceil(width),
+              width: Math.ceil(Math.max(width, URLBAR_WIDTH)),
               height: Math.ceil(Math.max(height, 40)),
             });
           } catch (error) {
@@ -3360,7 +3427,6 @@
     patchVerticalTabsManager(win);
     patchZenUIManager(win);
     patchUrlbar(win);
-    attachUrlbarDisableGuard(win);
     attachEmptyTabStateTracking(win);
     attachTransparentBrowserPrefSync(win);
     attachLittleWindowCloseButtonGuard(win);
@@ -3385,6 +3451,7 @@
 
   function whenStartupReady(win, callback) {
     if (win.gBrowserInit?.delayedStartupFinished) {
+      win.__littleZenStartupReady = true;
       callback();
       return;
     }
@@ -3394,6 +3461,7 @@
         return;
       }
       observer.disconnect();
+      win.__littleZenStartupReady = true;
       callback();
     });
 
@@ -3429,7 +3497,7 @@
     const command = win.document.createXULElement("command");
     command.id = COMMAND_ID;
     command.addEventListener("command", () => {
-      LittleZen.openLittleWindow(win);
+      LittleZen.openLittleWindow(win, { expanded: true, source: "command" });
     });
     commandSet.appendChild(command);
     log("Injected cmd_zenNewLittleWindow command");
@@ -3458,12 +3526,86 @@
 
       event.preventDefault();
       event.stopPropagation();
-      LittleZen.openLittleWindow(win);
+      LittleZen.openLittleWindow(win, { expanded: true, source: "shortcut" });
     };
 
     win.addEventListener("keydown", onKeyDown, true);
     win[PATCH_FLAGS.keyListener] = true;
     log("Attached fallback Little Zen shortcut listener");
+  }
+
+  function patchContentLinkShortcut() {
+    if (ClickHandlerParent[PATCH_FLAGS.contentLinkListener]) {
+      return;
+    }
+
+    const originalContentAreaClick = ClickHandlerParent.prototype.contentAreaClick;
+    ClickHandlerParent.prototype.contentAreaClick = function (event) {
+      const usesAccel = AppConstants.platform === "macosx" ? event.metaKey : event.ctrlKey;
+      if (
+        event.button !== 0 ||
+        event.shiftKey ||
+        !event.altKey ||
+        !usesAccel
+      ) {
+        return originalContentAreaClick.call(this, event);
+      }
+
+      const browser = this.manager.browsingContext.top.embedderElement;
+      const opener = browser?.documentGlobal;
+      if (!event.href || !isBrowserWindow(opener)) {
+        return originalContentAreaClick.call(this, event);
+      }
+
+      LittleZen.openLittleWindow(opener, {
+        url: event.href,
+        source: "ctrl-alt-click",
+        triggeringPrincipal: event.triggeringPrincipal,
+      });
+      return undefined;
+    };
+
+    ClickHandlerParent[PATCH_FLAGS.contentLinkListener] = true;
+    log("Patched remote content Ctrl+Alt+click handling");
+  }
+
+  function attachMainTabShortcut(win) {
+    if (isLittleWindow(win) || win[PATCH_FLAGS.tabClickListener]) {
+      return;
+    }
+
+    const onMouseDown = event => {
+      const usesAccel =
+        AppConstants.platform === "macosx" ? event.metaKey : event.ctrlKey;
+      const tab = event.target?.closest?.(".tabbrowser-tab");
+      if (
+        event.button !== 0 ||
+        event.shiftKey ||
+        !event.altKey ||
+        !usesAccel ||
+        !tab
+      ) {
+        return;
+      }
+
+      const url = tab.linkedBrowser?.currentURI?.spec;
+      if (!url || url === "about:blank" || url === "about:newtab") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      LittleZen.openLittleWindow(win, {
+        url,
+        source: "ctrl-alt-tab-click",
+        triggeringPrincipal: tab.linkedBrowser?.contentPrincipal,
+      });
+    };
+
+    win.gBrowser?.tabContainer?.addEventListener("mousedown", onMouseDown, true);
+    win[PATCH_FLAGS.tabClickListener] = true;
+    log("Attached main-window Ctrl+Alt+tab click handling");
   }
 
   const LittleZen = {
@@ -3500,7 +3642,7 @@
         log("Could not refresh Little Zen routed workspace target", error);
       }
 
-      if (win.gBrowserInit?.delayedStartupFinished) {
+      if (win.__littleZenStartupReady) {
         schedulePendingNavigationFlush(win, "queue-navigation-ready");
         return;
       }
@@ -3524,7 +3666,12 @@
     },
 
     openLittleWindow(opener = window, options = {}) {
-      const { url = null, source = "manual", triggeringPrincipal = null } = options;
+      const {
+        url = null,
+        source = "manual",
+        triggeringPrincipal = null,
+        expanded = false,
+      } = options;
       log("Little Zen open request", {
         source,
         url,
@@ -3533,9 +3680,12 @@
       for (const browserWindow of browserWindows()) {
         if (isEmptyLittleWindow(browserWindow)) {
           log("Reusing existing empty Little Zen window");
+          if (expanded) {
+            applyExpandedLittleWindow(browserWindow, "expanded-reuse");
+          }
           this.queueNavigation(browserWindow, url, { source, triggeringPrincipal });
           browserWindow.focus();
-          if (!url) {
+          if (!url && !expanded) {
             delete browserWindow.__littleZenSuppressUrlbarFocus;
             focusUrlbar(browserWindow);
           }
@@ -3553,10 +3703,16 @@
         all: false,
         features: OPEN_FEATURES,
         url,
+        expanded,
       });
 
       if (littleWindow) {
         this.queueNavigation(littleWindow, url, { source, triggeringPrincipal });
+        if (expanded) {
+          whenStartupReady(littleWindow, () => {
+            applyExpandedLittleWindow(littleWindow, "expanded-request");
+          });
+        }
         littleWindow.focus();
       }
 
@@ -3569,6 +3725,27 @@
       return;
     }
 
+    const redirectExternalStartup =
+      !isLittleWindow(win) &&
+      isExternalStartupWindow(win) &&
+      [...browserWindows()].some(
+        browserWindow => browserWindow !== win && !isLittleWindow(browserWindow)
+      );
+    if (redirectExternalStartup) {
+      patchOpenBrowserWindow(win);
+      const url = getExternalStartupUrl(win);
+      if (url) {
+        LittleZen.openLittleWindow(win, {
+          url,
+          source: "external-startup-window",
+          expanded: true,
+        });
+        win.close();
+        return;
+      }
+      log("External startup URL not available yet; waiting for browser startup");
+    }
+
     win[PATCH_FLAGS.window] = true;
     win.LittleZen = LittleZen;
 
@@ -3576,6 +3753,8 @@
     patchUriLoadingHelper();
     patchBrowserDOMWindow(win);
     patchOpenBrowserWindow(win);
+    patchContentLinkShortcut();
+    attachMainTabShortcut(win);
     ensureFallbackShortcut(win);
     ensureCommand(win);
 
@@ -3633,6 +3812,34 @@
 
     whenStartupReady(win, () => {
       log("Little Zen delayed startup reached");
+      if (redirectExternalStartup) {
+        let attempts = 0;
+        const redirect = () => {
+          if (win.closed) {
+            return;
+          }
+
+          const url = getLittleWindowUrl(win);
+          if (!url) {
+            if (++attempts < 100) {
+              win.setTimeout(redirect, 50);
+            } else {
+              log("External startup URL did not become available; keeping normal window");
+            }
+            return;
+          }
+
+          LittleZen.openLittleWindow(win, {
+            url,
+            source: "external-startup-window",
+            expanded: true,
+          });
+          win.close();
+        };
+        redirect();
+        return;
+      }
+
       patchBrowserDOMWindow(win);
       ensureCommand(win);
       patchOpenBrowserWindow(win);
@@ -3640,7 +3847,6 @@
       patchVerticalTabsManager(win);
       patchZenUIManager(win);
       patchUrlbar(win);
-
       if (isLittleWindow(win)) {
         applyLittleWindowMode(win);
         if (win.__littleZenPendingURL) {
