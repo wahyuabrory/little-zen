@@ -245,6 +245,34 @@
     }
   }
 
+  function markLittleWindowEarly(win, options = {}) {
+    if (!win?.document?.documentElement) {
+      return;
+    }
+
+    win._zenStartupLittleWindow = true;
+    win.__littleZenPresentationReleased = false;
+    if (options.expanded !== undefined) {
+      win.__littleZenStartExpanded = !!options.expanded;
+    }
+    if (options.url) {
+      win.__littleZenStartLoadingVeil = true;
+      win.__littleZenPendingURL = options.url;
+      win.__littleZenRoutedURL = options.url;
+      if (options.meta) {
+        win.__littleZenPendingURLMeta = options.meta;
+      }
+    }
+
+    try {
+      const root = win.document.documentElement;
+      root.setAttribute(LITTLE_WINDOW_ATTR, "true");
+      root.toggleAttribute("zen-little-window-loading", !!options.url);
+    } catch (error) {
+      log("Could not mark Little Zen window early", error);
+    }
+  }
+
   function releaseLittleWindowPresentation(win, reason = "unknown") {
     if (!isBrowserWindow(win) || win.__littleZenPresentationReleased) {
       return;
@@ -507,29 +535,15 @@
 
       const littleWindow = originalOpenBrowserWindow.call(this, nextOptions);
       if (littleWindow) {
-        littleWindow._zenStartupLittleWindow = true;
+        markLittleWindowEarly(littleWindow, {
+          url: options.url,
+          expanded: options.expanded,
+        });
         littleWindow._zenStartupSyncFlag = "unsynced";
-        littleWindow.__littleZenStartExpanded = !!options.expanded;
-        littleWindow.__littleZenStartLoadingVeil = !!options.url;
-        littleWindow.__littleZenPresentationReleased = false;
         log("Opened Little Zen browser window", {
           startupSyncFlag: littleWindow._zenStartupSyncFlag,
           hasPendingUrl: !!littleWindow.__littleZenPendingURL,
         });
-        try {
-          littleWindow.document?.documentElement?.setAttribute(
-            LITTLE_WINDOW_ATTR,
-            "true"
-          );
-          if (littleWindow.__littleZenStartLoadingVeil) {
-            littleWindow.document?.documentElement?.setAttribute(
-              "zen-little-window-loading",
-              "true"
-            );
-          }
-        } catch (error) {
-          log("Startup flag applied before DOM was ready.", error);
-        }
       }
       return littleWindow;
     };
@@ -3287,10 +3301,9 @@
     }
 
     const urlbar = win.gURLBar;
-    let resizeObserver = null;
 
     if (win.__littleZenStartExpanded) {
-      win.document.documentElement.setAttribute(LITTLE_WINDOW_ATTR, "true");
+      markLittleWindowEarly(win, { expanded: true });
       applyExpandedLittleWindow(win, "expanded-startup");
       win[PATCH_FLAGS.autoClose] = true;
       logLittleWindowState(win, "Opened expanded Little Zen window");
@@ -3323,10 +3336,6 @@
       }
 
       delete win.__littleZenLifecycleCleanup;
-      try {
-        resizeObserver?.disconnect();
-      } catch (error) {}
-      resizeObserver = null;
       clearLittleWindowLoadingFallback(win);
       try {
         win.removeEventListener("ZenFloatingURLBarOpened", onOpened);
@@ -3356,40 +3365,10 @@
       );
     };
 
-    if (urlbar && typeof win.ResizeObserver === "function") {
-      resizeObserver = new win.ResizeObserver(entries => {
-        if (win.closed || !isEmptyLittleWindow(win)) {
-          return;
-        }
-
-        for (const entry of entries) {
-          if (entry.target !== urlbar) {
-            continue;
-          }
-
-          const { width, height } = entry.target.getBoundingClientRect();
-          if (!width || !height) {
-            continue;
-          }
-
-          try {
-            win.resizeTo(
-              Math.ceil(Math.max(width, URLBAR_WIDTH)),
-              Math.ceil(Math.max(height, 40))
-            );
-            logLittleWindowState(win, "Resized Little Zen window to urlbar bounds", {
-              width: Math.ceil(Math.max(width, URLBAR_WIDTH)),
-              height: Math.ceil(Math.max(height, 40)),
-            });
-          } catch (error) {
-            log("Could not resize the Little Zen window to match the urlbar.", error);
-          }
-        }
-      });
-      resizeObserver.observe(urlbar);
-    }
-
-    win.document.documentElement.setAttribute(LITTLE_WINDOW_ATTR, "true");
+    markLittleWindowEarly(win, {
+      url: win.__littleZenPendingURL,
+      meta: win.__littleZenPendingURLMeta,
+    });
     win.document.documentElement.toggleAttribute("zen-no-padding", isEmptyLittleWindow(win));
     win.__littleZenLifecycleCleanup = cleanup;
 
@@ -3610,21 +3589,8 @@
         return;
       }
 
-      win._zenStartupLittleWindow = true;
-      try {
-        win.document?.documentElement?.setAttribute(LITTLE_WINDOW_ATTR, "true");
-        win.document?.documentElement?.setAttribute(
-          "zen-little-window-loading",
-          "true"
-        );
-      } catch (error) {
-        log("Could not mark Little Zen window before queueing navigation", error);
-      }
-
       win.__littleZenSuppressUrlbarFocus = true;
-      win.__littleZenPendingURL = url;
-      win.__littleZenRoutedURL = url;
-      win.__littleZenPendingURLMeta = meta;
+      markLittleWindowEarly(win, { url, meta });
       setLittleWindowLoading(win, true, "queue-navigation");
       closeLittleWindowUrlbar(win, "queue-navigation");
       routeLog("Queued Little Zen navigation", {
