@@ -879,12 +879,30 @@
     }, 150);
   }
 
+  function showPdfViewerWhileLoading(win, browser, url) {
+    if (
+      !isLittleWindow(win) ||
+      browser !== win.gBrowser?.selectedBrowser ||
+      !/\.pdf(?:[?#]|$)/i.test(url) ||
+      win.__littleZenPendingURL ||
+      !win.document.documentElement.hasAttribute("zen-little-window-loading")
+    ) {
+      return;
+    }
+
+    // The loading cover delays PDF.js rendering. Let the native viewer load normally.
+    setLittleWindowLoading(win, false, "pdf-viewer");
+  }
+
   function attachEmptyTabStateTracking(win) {
     if (win[PATCH_FLAGS.emptyState]) {
       return;
     }
 
     const scheduleThemeUpdate = (reason) => {
+      if (win.document.documentElement.hasAttribute("zen-little-window-loading")) {
+        return;
+      }
       updateLittleZenBlendedTheme(win, reason);
       win.setTimeout(() => updateLittleZenBlendedTheme(win, `${reason}:settled`), 180);
       win.setTimeout(() => updateLittleZenBlendedTheme(win, `${reason}:late`), 700);
@@ -897,15 +915,18 @@
 
       syncEmptyTabState(win, event?.type ?? "manual");
       scheduleThemeUpdate(event?.type ?? "manual");
+      const browser = win.gBrowser?.selectedBrowser;
+      showPdfViewerWhileLoading(win, browser, browser?.currentURI?.spec ?? "");
       if (win.__littleZenPendingURL && win.__littleZenStartupReady) {
         flushPendingNavigation(win, `state-tracker:${event?.type ?? "manual"}`);
       }
     };
 
     const progressListener = {
-      onLocationChange(browser, _webProgress, _request, _locationURI) {
+      onLocationChange(browser, _webProgress, _request, locationURI) {
         if (browser === win.gBrowser?.selectedBrowser) {
           scheduleThemeUpdate("location-change");
+          showPdfViewerWhileLoading(win, browser, locationURI?.spec ?? "");
         }
       },
 
@@ -915,7 +936,6 @@
           (webProgress?.isTopLevel ?? true) &&
           stateFlags & Ci.nsIWebProgressListener.STATE_STOP
         ) {
-          scheduleThemeUpdate("state-stop");
           const currentSpec = browser.currentURI?.spec ?? "";
           if (
             stateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK &&
@@ -925,6 +945,7 @@
           ) {
             setLittleWindowLoading(win, false, "state-stop");
           }
+          scheduleThemeUpdate("state-stop");
         }
       },
     };
@@ -2485,7 +2506,10 @@
   }
 
   async function updateLittleZenBlendedTheme(win, reason = "unknown") {
-    if (!isLittleWindow(win)) {
+    if (
+      !isLittleWindow(win) ||
+      win.document.documentElement.hasAttribute("zen-little-window-loading")
+    ) {
       return;
     }
 
@@ -3280,10 +3304,22 @@
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
+      if (target.url.startsWith("file:")) {
+        try {
+          const file = Services.io.newURI(target.url).QueryInterface(Ci.nsIFileURL).file;
+          if (!file.exists()) {
+            Services.prompt.alert(win, "Little Zen", "This file no longer exists on disk.");
+            return;
+          }
+        } catch (error) {
+          log("Could not check Little Zen tab file", error);
+        }
+      }
+      // This tab shortcut is browser chrome navigation, not a content click.
       LittleZen.openLittleWindow(win, {
         url: target.url,
         source: "ctrl-alt-tab-click",
-        triggeringPrincipal: target.tab.linkedBrowser?.contentPrincipal,
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
     };
 
