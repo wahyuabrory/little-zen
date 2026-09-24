@@ -345,6 +345,35 @@
   --input-color: var(--zen-tab-header-foreground, currentColor);
 }
 
+:root[zen-little-window="true"] #nav-bar #urlbar-zoom-button {
+  color: var(--zen-tab-header-foreground, inherit) !important;
+  background-color: color-mix(in srgb, var(--zen-tab-header-foreground) 8%, var(--zen-tab-header-background)) !important;
+}
+
+:root[zen-little-window="true"] #nav-bar #urlbar-zoom-button:hover {
+  background-color: color-mix(in srgb, var(--zen-tab-header-foreground) 16%, var(--zen-tab-header-background)) !important;
+}
+
+:root[zen-little-window="true"][zen-little-header-text="light"] #urlbar .urlbar-addon-page-action > .urlbar-icon {
+  filter: brightness(0) invert(1) !important;
+}
+
+:root[zen-little-window="true"][zen-little-header-text="dark"] #urlbar .urlbar-addon-page-action > .urlbar-icon {
+  filter: brightness(0) !important;
+}
+
+:root[zen-single-toolbar="true"]:not([zen-little-window="true"]) #urlbar:is([focused], [open], [breakout-extend], :focus-within) :is(.unified-extensions-item, [data-extensionid]) {
+  display: none !important;
+}
+
+:root[zen-little-window="true"][zen-little-header-text="light"] #nav-bar .unified-extensions-item-action-button {
+  list-style-image: var(--webextension-toolbar-image-dark, var(--webextension-toolbar-image, inherit)) !important;
+}
+
+:root[zen-little-window="true"][zen-little-header-text="dark"] #nav-bar .unified-extensions-item-action-button {
+  list-style-image: var(--webextension-toolbar-image, inherit) !important;
+}
+
 :root[zen-little-window="true"] #urlbar:not([focused]):not([open]):not([breakout-extend="true"]) > .urlbar-background,
 :root[zen-little-window="true"] #urlbar:not([focused]):not([open]):not([breakout-extend="true"]) .urlbar-background {
   background: transparent !important;
@@ -483,7 +512,7 @@
   background-blend-mode: normal !important;
 }
 
-:root[zen-little-window="true"] #nav-bar :is(toolbarbutton, .toolbarbutton-1, .toolbarbutton-icon, .toolbarbutton-text, image),
+:root[zen-little-window="true"] #nav-bar :is(toolbarbutton, .toolbarbutton-1, .toolbarbutton-icon, .toolbarbutton-text, image):not(.unified-extensions-item, .unified-extensions-item *),
 :root[zen-little-window="true"] .titlebar-buttonbox-container :is(toolbarbutton, .toolbarbutton-1, .toolbarbutton-icon, .titlebar-button),
 :root[zen-little-window="true"] .titlebar-buttonbox-container :is(toolbarbutton, .toolbarbutton-1, .toolbarbutton-icon, .titlebar-button) * {
   color: var(--zen-tab-header-foreground, inherit) !important;

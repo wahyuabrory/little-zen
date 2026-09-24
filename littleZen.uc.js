@@ -30,6 +30,7 @@
     zenUIManager: "__littleZenZenUIManagerPatched",
     urlbar: "__littleZenUrlbarPatched",
     urlbarDisableGuard: "__littleZenUrlbarDisableGuardAttached",
+    extensionPlacement: "__littleZenExtensionPlacementAttached",
     emptyState: "__littleZenEmptyStatePatched",
     autoClose: "__littleZenAutoCloseAttached",
     doubleEscapeClose: "__littleZenDoubleEscapeCloseAttached",
@@ -1200,6 +1201,42 @@
         }
       }
     }
+  }
+
+  function attachLittleWindowExtensionPlacement(win) {
+    if (!isLittleWindow(win) || win[PATCH_FLAGS.extensionPlacement]) {
+      return;
+    }
+
+    const target = win.document.getElementById("nav-bar-customization-target");
+    const actions = win.document.getElementById("page-action-buttons");
+    if (!target || !actions) {
+      return;
+    }
+
+    const place = node => {
+      if (node.parentElement !== target || !node.hasAttribute("data-extensionid")) {
+        return;
+      }
+      node.setAttribute("context", "toolbar-context-menu");
+      actions.before(node);
+      log("Placed Little Zen extension in URL bar");
+    };
+    const observer = new win.MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === 1) {
+            place(node);
+          }
+        }
+      }
+    });
+    observer.observe(target, { childList: true });
+    for (const node of Array.from(target.children)) {
+      place(node);
+    }
+    win.addEventListener("unload", () => observer.disconnect(), { once: true });
+    win[PATCH_FLAGS.extensionPlacement] = true;
   }
 
   function applyExpandedLittleWindow(win, reason) {
@@ -2468,6 +2505,10 @@
     );
     const header = themeColor;
     const foreground = getStableHeaderForeground(themeRgb, theme?.fg);
+    root.setAttribute(
+      "zen-little-header-text",
+      getRelativeLuminance(parseCssRgb(foreground)) > 0.5 ? "light" : "dark"
+    );
     const windowBackground = themeColor;
     const isLightTheme = getRelativeLuminance(themeRgb) > 0.56;
     const controlOutline = isLightTheme
@@ -3138,6 +3179,7 @@
     syncEmptyTabState(win, "apply-mode");
     updateLittleZenBlendedTheme(win, "apply-mode");
     refreshLittleWindowLayout(win);
+    attachLittleWindowExtensionPlacement(win);
     attachAutoClose(win);
     if (win.__littleZenPendingURL) {
       schedulePendingNavigationFlush(win, "apply-mode");

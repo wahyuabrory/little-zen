@@ -20,7 +20,7 @@ This project is based on [12th-devs/little-zen](https://github.com/12th-devs/lit
 - Ignore Zen Space routing and keep container-extension redirects in the Little Zen window.
 - Preserve the live tab when moving it back into the main Zen window when possible.
 - Adapt the Little Zen frame and toolbar colors to the loaded page.
-- Keep pinned extension buttons in the sidebar URL bar until it is full.
+- Keep pinned extension buttons in the sidebar URL bar and hide them while editing the address.
 - Skip this backport automatically when native Little Zen support is available.
 
 ## Install
