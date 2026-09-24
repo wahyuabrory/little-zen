@@ -335,6 +335,10 @@
   --input-color: var(--zen-tab-header-foreground, currentColor);
 }
 
+:root[zen-little-window="true"]:not([zen-has-empty-tab="true"]) #urlbar[breakout-extend]:not([zen-floating-urlbar="true"]) {
+  margin-block-start: calc(var(--urlbar-margin-block-start-breakout, 0px) + 8px) !important;
+}
+
 :root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) .urlbar-input-box,
 :root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) #urlbar-input {
   color: var(--zen-tab-header-foreground, inherit) !important;
