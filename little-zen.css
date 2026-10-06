@@ -6,8 +6,10 @@
   --zen-sidebar-width: 0px !important;
   --zen-compact-sidebar-width: 0px !important;
   --zen-compact-mode-sidebar-width: 0px !important;
-  --blended-addressbar-frame-gap: 5px;
-  --blended-addressbar-frame-radius: 8px;
+  --blended-addressbar-frame-gap: 8px;
+  --blended-addressbar-frame-radius: 10px;
+  --little-zen-control-radius: 16px;
+  --little-zen-control-border-shadow: 0 0 0 1.5px var(--little-zen-theme-outline, color-mix(in srgb, currentColor 30%, transparent)) inset;
   --blended-addressbar-inner-radius: max(
     0px,
     calc(var(--blended-addressbar-frame-radius) - var(--blended-addressbar-frame-gap))
@@ -277,8 +279,8 @@
   top: 0 !important;
   right: 0 !important;
   width: var(--little-zen-titlebar-control-width) !important;
-  height: var(--zen-toolbar-height, 40px) !important;
-  max-height: var(--zen-toolbar-height, 40px) !important;
+  height: 44px !important;
+  max-height: 44px !important;
   min-height: 0 !important;
   overflow: hidden !important;
   align-items: stretch !important;
@@ -296,8 +298,11 @@
 }
 
 :root[zen-little-window="true"] #nav-bar {
+  box-sizing: border-box !important;
+  height: 44px !important;
   min-height: 44px !important;
-  padding-block: 5px !important;
+  max-height: 44px !important;
+  padding-block: 6px !important;
   padding-inline-end: var(--little-zen-titlebar-control-width) !important;
   box-shadow: var(--blended-addressbar-toolbar-separator-shadow);
   background-color: var(--zen-tab-header-background, transparent) !important;
@@ -316,6 +321,15 @@
   display: none !important;
 }
 
+:root[zen-little-window="true"] #nav-bar > .titlebar-spacer[type="pre-tabs"] {
+  display: none !important;
+}
+
+:root[zen-little-window="true"] #nav-bar-customization-target > toolbarspring:has(~ #urlbar-container),
+:root[zen-little-window="true"] #nav-bar-customization-target > #urlbar-container ~ toolbarspring {
+  display: none !important;
+}
+
 :root[zen-little-window="true"] #zen-appcontent-navbar-wrapper {
   height: auto !important;
   min-height: 44px !important;
@@ -330,13 +344,17 @@
 }
 
 :root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) {
+  --urlbar-container-height: 32px !important;
+  --urlbar-height: 32px !important;
+  --urlbar-margin-block-start-open: 6px !important;
+  --urlbar-background-overhang-open: 0px !important;
   color: var(--zen-tab-header-foreground, inherit) !important;
   --toolbar-field-color: var(--zen-tab-header-foreground, currentColor);
   --input-color: var(--zen-tab-header-foreground, currentColor);
 }
 
-:root[zen-little-window="true"]:not([zen-has-empty-tab="true"]) #urlbar[breakout-extend]:not([zen-floating-urlbar="true"]) {
-  margin-block-start: calc(var(--urlbar-margin-block-start-breakout, 0px) + 8px) !important;
+:root[zen-little-window="true"]:not([zen-has-empty-tab="true"]) #urlbar:is([breakout-extend], :popover-open):not([zen-floating-urlbar="true"]) {
+  margin-block-start: 6px !important;
 }
 
 :root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) .urlbar-input-box,
@@ -374,12 +392,28 @@
   list-style-image: var(--webextension-toolbar-image, inherit) !important;
 }
 
+:root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) > .urlbar-background,
+:root[zen-little-window="true"] #zen-little-window-space-picker {
+  border: none !important;
+  border-radius: var(--little-zen-control-radius) !important;
+  box-shadow: var(--little-zen-control-border-shadow) !important;
+}
+
+:root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) > .urlbar-background {
+  margin: 0 !important;
+}
+
+:root[zen-little-window="true"] #urlbar:not([zen-floating-urlbar="true"]) > .urlbar-input-container {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 :root[zen-little-window="true"] #urlbar:not([focused]):not([open]):not([breakout-extend="true"]) > .urlbar-background,
 :root[zen-little-window="true"] #urlbar:not([focused]):not([open]):not([breakout-extend="true"]) .urlbar-background {
+  inset-block: 0 !important;
   background: transparent !important;
   background-color: transparent !important;
-  border-color: var(--little-zen-theme-outline, color-mix(in srgb, currentColor 14%, transparent)) !important;
-  box-shadow: 0 0 0 1px var(--little-zen-theme-outline, color-mix(in srgb, currentColor 14%, transparent)) inset !important;
   transition: none !important;
 }
 
@@ -437,7 +471,7 @@
 
 :root[zen-little-window="true"]:not([zen-has-empty-tab="true"]) #zen-appcontent-wrapper {
   z-index: 3;
-  margin: var(--blended-addressbar-frame-gap) !important;
+  margin: 0 var(--blended-addressbar-frame-gap) var(--blended-addressbar-frame-gap) !important;
   background: var(--blended-addressbar-frame-background, var(--little-zen-window-theme-background, transparent)) !important;
   box-shadow: none !important;
   overflow: hidden !important;
@@ -450,6 +484,11 @@
 :root[zen-little-window="true"] #tabbrowser-tabpanels {
   border-radius: var(--blended-addressbar-frame-radius) !important;
   overflow: hidden !important;
+}
+
+/* The Little Zen toolbar stays visible, so hover must not move the page. */
+:root[zen-little-window="true"] #tabbrowser-tabpanels[has-toolbar-hovered] .browserContainer {
+  margin-top: 0 !important;
 }
 
 :root[zen-little-window="true"] #zen-tabbox-wrapper {
@@ -570,17 +609,15 @@
   align-items: center;
   gap: 0;
   padding: 0;
-  border-radius: 16px;
   background: transparent !important;
   background-color: transparent !important;
-  box-shadow: 0 0 0 1px var(--little-zen-theme-outline, color-mix(in srgb, currentColor 14%, transparent)) inset;
   cursor: pointer;
   box-sizing: border-box !important;
   height: 32px !important;
   min-height: 32px;
   max-height: 32px;
   max-width: 184px;
-  margin-inline: 5px;
+  margin-inline: 8px 0;
   transition: none !important;
   overflow: hidden;
 }
@@ -671,10 +708,18 @@
 }
 
 #zen-little-window-space-menu {
-  --panel-padding: 0;
-  width: 176px;
-  min-width: 176px;
-  max-width: 176px;
+  --panel-padding: 6px;
+  --panel-border-radius: 12px;
+  --panel-shadow: 0 8px 24px rgba(0, 0, 0, 0.20);
+  width: 208px;
+  min-width: 208px;
+  max-width: 208px;
+}
+
+#zen-little-window-space-menu::part(content) {
+  padding: 6px !important;
+  border-radius: 12px !important;
+  box-shadow: var(--panel-shadow) !important;
 }
 
 #zen-little-window-space-menu * {
@@ -685,25 +730,22 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 1px 5px;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent);
-}
-
-.zen-little-window-space-menu-search-icon {
-  width: 12px;
-  height: 12px;
-  margin-inline: 3px 5px;
-  list-style-image: url("chrome://browser/skin/search-glass.svg");
-  -moz-context-properties: fill;
-  fill: currentColor;
-  opacity: 0.7;
+  box-sizing: border-box;
+  min-height: 32px;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
 }
 
 .zen-little-window-space-menu-search {
   appearance: none;
+  box-sizing: border-box;
   flex: 1;
+  width: 100%;
   min-width: 0;
-  height: 17px;
+  height: 30px;
   margin: 0;
   padding: 0;
   border: 0 !important;
@@ -711,7 +753,7 @@
   background: transparent !important;
   color: inherit;
   font: inherit;
-  font-size: 10px;
+  font-size: 12px;
   text-align: start !important;
   direction: ltr;
 }
@@ -732,10 +774,12 @@
 }
 
 .zen-little-window-space-menu-item {
-  min-height: 22px !important;
-  margin: 1px 3px !important;
-  border-radius: 5px !important;
-  font-size: 11px !important;
+  min-height: 32px !important;
+  margin: 2px 0 !important;
+  padding-inline: 8px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  font-size: 12px !important;
   transition: none !important;
 }
 
@@ -747,7 +791,6 @@
   padding-inline-start: 0 !important;
 }
 
-.zen-little-window-space-menu-item[selected="true"],
-.zen-little-window-space-menu-item[_moz-menuactive="true"] {
+.zen-little-window-space-menu-item[selected="true"] {
   background-color: color-mix(in srgb, currentColor 10%, transparent) !important;
 }

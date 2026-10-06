@@ -1326,6 +1326,20 @@
       return false;
     }
 
+    if (!win.__littleZenWorkspacesInitialized && win.gZenWorkspaces?.promiseInitialized) {
+      if (!win.__littleZenWorkspacesWaitAttached) {
+        win.__littleZenWorkspacesWaitAttached = true;
+        win.gZenWorkspaces.promiseInitialized.then(() => {
+          if (win.closed) {
+            return;
+          }
+          win.__littleZenWorkspacesInitialized = true;
+          schedulePendingNavigationFlush(win, "workspaces-ready");
+        }).catch(error => log("Little Zen workspace initialization failed", error));
+      }
+      return false;
+    }
+
     let selectedBrowser = win.gBrowser?.selectedBrowser;
     if (!selectedBrowser) {
       logLittleWindowState(win, "Little Zen pending URL waiting for selected browser", {
@@ -1789,6 +1803,36 @@
     return (light + 0.05) / (dark + 0.05);
   }
 
+  function getBlendedControlOutline(background) {
+    const black = { r: 0, g: 0, b: 0 };
+    const white = { r: 255, g: 255, b: 255 };
+    const tint = getContrastRatio(background, black) >= getContrastRatio(background, white)
+      ? black
+      : white;
+    const blend = amount => ({
+      r: background.r + (tint.r - background.r) * amount,
+      g: background.g + (tint.g - background.g) * amount,
+      b: background.b + (tint.b - background.b) * amount,
+    });
+    let low = 0;
+    let high = 1;
+    // Keep the same subtle contrast on neutral and colored headers.
+    for (let i = 0; i < 12; i++) {
+      const amount = (low + high) / 2;
+      if (getContrastRatio(background, blend(amount)) < 1.4) {
+        low = amount;
+      } else {
+        high = amount;
+      }
+    }
+    const outline = blend(high);
+    return rgbToCss({
+      r: Math.round(outline.r),
+      g: Math.round(outline.g),
+      b: Math.round(outline.b),
+    });
+  }
+
   function chooseForeground(color) {
     return getRelativeLuminance(color) > 0.6
       ? "rgba(11, 13, 16, 0.92)"
@@ -1818,15 +1862,20 @@
   }
 
   function getCurrentThemeColorScheme(win) {
-    const rootStyle = win.getComputedStyle(win.document.documentElement);
+    const themeWin = isLittleWindow(win) ? getMainBrowserWindow(win) || win : win;
+    const root = themeWin.document.documentElement;
+    if (
+      root.hasAttribute("zen-should-be-dark-mode") ||
+      themeWin.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+    const rootStyle = themeWin.getComputedStyle(root);
     const colorScheme =
       rootStyle.getPropertyValue("--toolbar-color-scheme") ||
       rootStyle.colorScheme;
     const normalizedScheme = String(colorScheme || "").trim().toLowerCase();
-    if (normalizedScheme === "light" || normalizedScheme === "dark") {
-      return normalizedScheme;
-    }
-    return win.document.documentElement.hasAttribute("zen-should-be-dark-mode") ? "dark" : "light";
+    return normalizedScheme === "dark" ? "dark" : "light";
   }
 
   function getNeutralHeaderShade(win, source = "unknown-page") {
@@ -2511,12 +2560,10 @@
     );
     const windowBackground = themeColor;
     const isLightTheme = getRelativeLuminance(themeRgb) > 0.56;
-    const controlOutline = isLightTheme
-      ? "rgba(0, 0, 0, 0.14)"
-      : "rgba(255, 255, 255, 0.13)";
+    const controlOutline = getBlendedControlOutline(themeRgb);
     const pageOutline = isLightTheme
-      ? "rgba(0, 0, 0, 0.24)"
-      : "rgba(255, 255, 255, 0.22)";
+      ? "rgba(0, 0, 0, 0.34)"
+      : "rgba(255, 255, 255, 0.20)";
     const tintBackground = windowBackground;
 
     setCssVar(root, "--little-zen-page-header-background", header);
@@ -2699,6 +2746,7 @@
     // Popup menu
     const popup = doc.createXULElement("menupopup");
     popup.id = PICKER_MENU_ID;
+    popup.setAttribute("ignorekeys", "true");
 
     picker.appendChild(openButton);
     picker.appendChild(arrow);
@@ -2746,10 +2794,6 @@
       searchRow.className = "zen-little-window-space-menu-search-row";
       searchRow.setAttribute("align", "center");
 
-      const searchIcon = doc.createXULElement("image");
-      searchIcon.className = "zen-little-window-space-menu-search-icon";
-      searchRow.appendChild(searchIcon);
-
       const searchInput = doc.createElementNS(
         "http://www.w3.org/1999/xhtml",
         "input"
@@ -2759,6 +2803,8 @@
       searchInput.setAttribute("type", "search");
       searchInput.setAttribute("placeholder", "Search spaces");
       searchInput.setAttribute("autocomplete", "off");
+      searchInput.setAttribute("aria-label", "Search spaces");
+      searchInput.setAttribute("dir", "ltr");
       searchRow.appendChild(searchInput);
       popup.appendChild(searchRow);
 
@@ -2797,6 +2843,12 @@
         }
         item.addEventListener("command", () => {
           selectWorkspace(ws);
+        });
+        item.addEventListener("DOMMenuItemActive", () => {
+          setSelectedRow(item);
+        });
+        item.addEventListener("DOMMenuItemInactive", () => {
+          item.removeAttribute("selected");
         });
         rows.push(item);
         popup.appendChild(item);
@@ -2843,6 +2895,12 @@
       const stopSearchEvent = (event) => {
         if (event.target === searchInput || searchRow.contains(event.target)) {
           if (event.type === "keydown") {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              popup.hidePopup();
+              return;
+            }
             if (event.key === "ArrowDown" || (event.key === "Tab" && !event.shiftKey)) {
               event.preventDefault();
               event.stopPropagation();
