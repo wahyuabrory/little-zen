@@ -2979,7 +2979,7 @@
         !e.defaultPrevented &&
         !e.repeat &&
         (AppConstants.platform === "macosx" ? e.metaKey : e.ctrlKey) &&
-        e.key?.toLowerCase() === "o"
+        (e.code === "KeyO" || e.key?.toLowerCase() === "o")
       ) {
         e.preventDefault();
         e.stopPropagation();
@@ -3300,6 +3300,17 @@
     });
     commandSet.appendChild(command);
     log("Injected cmd_zenNewLittleWindow command");
+
+    const keyset = win.document.getElementById("mainKeyset");
+    if (keyset && !win.document.getElementById("key_littleZenNew")) {
+      const keyElement = win.document.createXULElement("key");
+      keyElement.id = "key_littleZenNew";
+      keyElement.setAttribute("key", "N");
+      keyElement.setAttribute("modifiers", "accel,alt");
+      keyElement.setAttribute("command", COMMAND_ID);
+      keyset.appendChild(keyElement);
+      log("Injected native Little Zen key binding");
+    }
   }
 
   function ensureFallbackShortcut(win) {
@@ -3318,7 +3329,7 @@
         event.getModifierState("AltGraph") ||
         !event.altKey ||
         !isAccelPressed(event) ||
-        event.key?.toLowerCase() !== "n"
+        (event.code !== "KeyN" && event.key?.toLowerCase() !== "n")
       ) {
         return;
       }
